@@ -1,4 +1,4 @@
-# QMX+/QMX · Health Dashboard
+# QMX+ QMX · Health Dashboard
 
 > A browser-based live monitoring and control panel for the **QRP Labs QMX** (and QDX) transceiver,
 > connecting directly to the radio via the **Web Serial API** — no drivers, no software to install.
