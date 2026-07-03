@@ -18,7 +18,7 @@
 | **Tuning knob** | Drag to tune; velocity-sensitive (slow = 1 Hz fine, fast = kHz coarse); scroll or ↑↓ keys step by the selected increment |
 | **Mode chip** | Click to cycle CW → FSK → CW-R → FSK-R |
 | **VFO A / B** | Click to swap the active VFO; B frequency shown live |
-| **RIT** | Click to toggle; offset displayed when on |
+| **RIT** | Click to toggle; offset displayed when on | 
 | **Split** | Click to toggle split/simplex |
 | **TX key** | Click to key / unkey the transmitter |
 | **SWR gauge** | Semicircular analogue gauge + 60-point sparkline |
