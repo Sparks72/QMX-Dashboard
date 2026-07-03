@@ -52,7 +52,7 @@ The demo is the real application — connect your QMX over USB and it goes live 
 
 | Dark theme | Light theme |
 |---|---|
-| *(add screenshot)* | *(add screenshot)* |
+| ![Dark theme](screenshot1.png) | ![Light theme](screenshot2.png) |
 
 ---
 
