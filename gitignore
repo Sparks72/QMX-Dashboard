@@ -1,0 +1,35 @@
+# OS junk
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.orig
+
+# If you ever add Node tooling
+node_modules/
+npm-debug.log*
+
+# Screenshots folder is intentionally tracked — don't ignore it
+# screenshots/

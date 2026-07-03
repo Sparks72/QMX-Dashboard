@@ -1,0 +1,2097 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QMX Fusion · Health Dashboard V27</title>
+<meta name="description" content="Browser-based live monitoring and CAT control panel for the QRP Labs QMX transceiver. Connects via Web Serial API — no software to install. Chrome / Edge only.">
+<meta property="og:title" content="QMX Fusion · Health Dashboard V27">
+<meta property="og:description" content="Live SWR, RF power, S-meter, VFO, mode, keyer speed and audio monitor for the QRP Labs QMX. Runs entirely in the browser via Web Serial API.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+
+/* ── Token system ── */
+:root[data-theme="dark"] {
+  --bg:         #080d08;
+  --bg2:        #0c140c;
+  --surface:    #111a11;
+  --border:     #1c2e1c;
+  --border2:    #243824;
+  --glow:       #39ff14;
+  --glow2:      #2acc10;
+  --dim:        #2d6b2d;
+  --muted:      #4d8a4d;
+  --text:       #d4ecd4;
+  --text2:      #8aaa8a;
+  --accent:     #39ff14;
+  --warn:       #f0c030;
+  --err:        #ff4d4d;
+  --good:       #39ff14;
+  --needle:     #39ff14;
+  --gauge-bg:   #0a120a;
+  --gauge-rim:  #1a2e1a;
+  --card-shadow:0 2px 16px rgba(0,0,0,0.6);
+  --spark-line: #39ff14;
+  --spark-fill: rgba(57,255,20,0.08);
+  --mode-icon:  '☀';
+}
+
+:root[data-theme="light"] {
+  --bg:         #f5f0e8;
+  --bg2:        #ede8de;
+  --surface:    #fff8ef;
+  --border:     #d4c8b0;
+  --border2:    #c4b89a;
+  --glow:       #1a6e00;
+  --glow2:      #267a00;
+  --dim:        #8a9a7a;
+  --muted:      #6a7a5a;
+  --text:       #2a2a1a;
+  --text2:      #5a5a4a;
+  --accent:     #c45000;
+  --warn:       #c47000;
+  --err:        #c42000;
+  --good:       #1a6e00;
+  --needle:     #c45000;
+  --gauge-bg:   #f0ebe0;
+  --gauge-rim:  #c4b89a;
+  --card-shadow:0 2px 12px rgba(0,0,0,0.12);
+  --spark-line: #c45000;
+  --spark-fill: rgba(196,80,0,0.08);
+  --mode-icon:  '🌙';
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* ── Header ── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--card-shadow);
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--glow);
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--glow) 40%, transparent);
+}
+
+.header-title {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conn-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.conn-pill:hover { border-color: var(--glow); color: var(--text); }
+.conn-pill.connected { border-color: var(--glow); color: var(--glow); }
+
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--err);
+  flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.dot.on { background: var(--good); box-shadow: 0 0 5px var(--good); }
+.dot.busy { background: var(--warn); box-shadow: 0 0 5px var(--warn); animation: pulse 0.8s ease-in-out infinite alternate; }
+@keyframes pulse { from{opacity:1} to{opacity:0.3} }
+
+.theme-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: border-color 0.2s, background 0.2s;
+  color: var(--text);
+}
+.theme-btn:hover { border-color: var(--glow); background: var(--bg); }
+
+.callsign {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+/* ── Update interval selector ── */
+.interval-sel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ── Main grid ── */
+.dashboard {
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto auto;
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: var(--card-shadow);
+  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.4;
+}
+
+.card-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.card-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+  transition: color 0.3s;
+}
+.card-value.good { color: var(--good); }
+.card-value.warn { color: var(--warn); }
+.card-value.err  { color: var(--err);  }
+
+.card-unit {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 300;
+}
+
+/* ── Sparkline ── */
+.sparkline-wrap {
+  margin-top: 12px;
+  height: 36px;
+  position: relative;
+}
+canvas.sparkline {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Gauge cards (SWR + Power) ── */
+.card.gauge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.card.gauge-card .card-label { text-align: center; }
+
+canvas.gauge {
+  display: block;
+  width: 180px;
+  height: 110px;
+  margin: 0 auto;
+}
+
+.gauge-readout {
+  text-align: center;
+  margin-top: 4px;
+}
+.gauge-readout .card-value { font-size: 22px; }
+
+/* ── VFO card (wide) ── */
+.card.vfo-card {
+  grid-column: span 2;
+}
+.vfo-freq {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 36px;
+  font-weight: 400;
+  color: var(--glow);
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--glow) 35%, transparent);
+  line-height: 1;
+  margin: 4px 0 8px;
+}
+.vfo-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.vfo-chip {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--text2);
+}
+.vfo-chip.active { border-color: var(--glow); color: var(--glow); }
+.vfo-chip.clk { cursor: pointer; user-select: none; transition: border-color .12s, color .12s, background .12s, transform .05s; }
+.vfo-chip.clk:hover { border-color: var(--glow); color: var(--text); background: var(--bg); }
+.vfo-chip.clk:active { transform: translateY(1px); }
+.vfo-chip.tx-chip.active { border-color: var(--err); color: var(--err); }
+
+/* ── Band-change buttons ── */
+.band-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.band-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--text2);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .12s, color .12s, background .12s, transform .05s;
+}
+.band-btn:hover { border-color: var(--glow); color: var(--text); background: var(--bg); }
+.band-btn:active { transform: translateY(1px); }
+.band-btn.active { border-color: var(--glow); color: var(--glow); }
+
+/* ── Clock card ── */
+.card.clock-card { grid-column: span 1; }
+.clock-time {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 32px;
+  color: var(--text);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  margin: 4px 0;
+}
+.clock-date {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'Share Tech Mono', monospace;
+}
+
+/* ── Signal meter card (wide) ── */
+.card.signal-card { grid-column: span 2; }
+
+.s-meter-wrap {
+  margin-top: 8px;
+}
+.s-meter-bar {
+  height: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 4px;
+}
+.s-meter-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.15s;
+  background: linear-gradient(90deg, var(--good) 0%, var(--good) 60%, var(--warn) 75%, var(--err) 100%);
+}
+.s-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.s-meter-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--muted);
+  font-family: 'Share Tech Mono', monospace;
+  margin-bottom: 6px;
+}
+
+.signal-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+/* ── Status row ── */
+.card.status-card { grid-column: span 4; }
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+.status-item {
+  text-align: center;
+}
+.status-item-label {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.status-item-val {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+.status-item-val.on  { color: var(--good); }
+.status-item-val.off { color: var(--muted); }
+.status-item-val.tx  { color: var(--err); }
+
+/* ── Keyer speed card ── */
+.speed-arc-wrap { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+
+/* ── No serial warning ── */
+.no-serial {
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  border: 1px solid var(--err);
+  color: var(--err);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  margin: 16px 24px;
+  display: none;
+}
+
+/* ── Overlay when disconnected ── */
+.dash-overlay {
+  position: fixed;
+  inset: 52px 0 0 0;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(4px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 50;
+}
+.dash-overlay h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 18px;
+  color: var(--glow);
+  font-weight: 600;
+}
+.dash-overlay p { color: var(--muted); font-size: 13px; }
+.connect-big {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 12px 28px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.connect-big:hover { opacity: 0.85; transform: translateY(-1px); }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 16px; right: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  box-shadow: var(--card-shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+  z-index: 9999;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+
+
+
+
+/* ── Audio monitor ── */
+.audio-row { display:flex; align-items:center; gap:10px; margin-top:8px; }
+.audio-btn {
+  background: var(--bg2); border: 1px solid var(--border2); color: var(--text2);
+  font-family: inherit; font-size: 12px; padding: 7px 14px; border-radius: 4px;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.audio-btn:hover { border-color: var(--glow); color: var(--text); }
+.audio-btn.active {
+  border-color: var(--glow); color: var(--glow);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 30%, transparent);
+}
+.audio-dev {
+  flex: 1; min-width: 0; background: var(--bg2); border: 1px solid var(--border2);
+  color: var(--text2); font-family: inherit; font-size: 11px; padding: 6px 8px;
+  border-radius: 4px; outline: none; cursor: pointer;
+}
+.audio-dev:focus { border-color: var(--glow); }
+.boost-wrap { margin-top: 12px; }
+.boost-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.boost-val { font-family:'Share Tech Mono',monospace; font-size:16px; color:var(--glow);
+             text-shadow:0 0 6px color-mix(in srgb,var(--glow) 30%,transparent); }
+input[type=range].boost-slider {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+  border-radius: 3px; background: var(--border2); outline: none; cursor: pointer;
+}
+input[type=range].boost-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--glow); cursor: pointer;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 60%, transparent);
+  border: 2px solid var(--surface);
+}
+input[type=range].boost-slider::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--glow);
+  cursor: pointer; border: 2px solid var(--surface);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 60%, transparent);
+}
+.vu-wrap { margin-top: 12px; }
+.vu-bar {
+  height: 10px; border-radius: 3px; background: var(--bg2);
+  border: 1px solid var(--border2); overflow: hidden; position: relative;
+}
+.vu-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--glow2), var(--glow) 70%, var(--warn));
+  transition: width .05s linear;
+}
+.audio-note { font-size: 9px; color: var(--dim); margin-top: 6px; letter-spacing:.04em; }
+
+/* ── Transplanted tuning knob from QMX reference ── */
+.tuning-knob-container {
+  width: 140px; height: 140px;
+  position: relative; margin: 8px auto;
+  cursor: default;
+}
+.tuning-knob {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  position: relative;
+  cursor: default;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6),
+              inset 0 3px 5px rgba(255,255,255,0.12),
+              inset 0 -3px 5px rgba(0,0,0,0.4);
+  transform: rotate(-90deg);
+  border: 2px solid var(--border2);
+  background-image:
+    repeating-conic-gradient(rgba(255,255,255,0.06) 0deg, rgba(0,0,0,0.08) 5deg, rgba(255,255,255,0.06) 10deg),
+    linear-gradient(135deg, #1a2e1a, #0c140c, #080d08);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.tuning-knob::before {
+  content: "";
+  position: absolute;
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 10px solid var(--glow);
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  filter: drop-shadow(0 0 4px var(--glow));
+}
+.tuning-knob::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 46px;
+  background: linear-gradient(to top, var(--glow) 0%, var(--glow) 80%, transparent 80%);
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  box-shadow: 0 0 6px var(--glow);
+}
+.tuning-knob-center {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--surface), var(--bg2));
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+  border: 1px solid var(--border2);
+  position: relative; z-index: 2;
+}
+
+/* ── Rotary knobs ── */
+.knob-card { outline: none; }
+.knob-card:focus { border-color: var(--glow); box-shadow: 0 0 0 2px color-mix(in srgb, var(--glow) 25%, transparent); }
+.knob-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  cursor: default;
+  user-select: none;
+}
+.knob-svg { display: block; touch-action: none; cursor: default; }
+.knob-readout {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 22px;
+  color: var(--glow);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--glow) 35%, transparent);
+  line-height: 1;
+  text-align: center;
+}
+.knob-unit {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.knob-hint {
+  font-size: 9px;
+  color: var(--dim);
+  text-align: center;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+
+/* ── Responsive ── */
+@media(max-width: 900px) {
+  .dashboard { grid-template-columns: repeat(2,1fr); }
+  .card.vfo-card, .card.signal-card, .card.status-card { grid-column: span 2; }
+  .status-grid { grid-template-columns: repeat(3,1fr); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">QMX</span>
+  <span class="header-title">Fusion · Health Dashboard V27</span>
+  <div class="header-right">
+    <select class="interval-sel" id="interval-sel" title="Update interval">
+      <option value="500">500 ms</option>
+      <option value="1000" selected>1 s</option>
+      <option value="2000">2 s</option>
+      <option value="5000">5 s</option>
+    </select>
+    <div class="conn-pill" id="conn-pill" title="Click to connect">
+      <span class="dot" id="dot"></span>
+      <span id="conn-label">Connect</span>
+      <select id="baud-sel" style="background:transparent;border:none;color:inherit;font-size:11px;font-family:inherit;cursor:pointer;outline:none" onclick="event.stopPropagation()">
+        <option value="115200" selected>115200</option>
+        <option value="57600">57600</option>
+        <option value="9600">9600</option>
+      </select>
+    </div>
+    <button class="theme-btn" id="theme-btn" title="Toggle theme">☀</button>
+    <span class="callsign">G4ADF · DJ0CU</span>
+    <a href="https://github.com/Sparks72/QMX-Dashboard" target="_blank" rel="noopener"
+       style="font-size:11px;color:var(--muted);text-decoration:none;font-family:'Share Tech Mono',monospace;letter-spacing:.05em;transition:color .2s"
+       onmouseover="this.style.color='var(--glow)'" onmouseout="this.style.color='var(--muted)'">GitHub ↗</a>
+  </div>
+</header>
+
+<div class="no-serial" id="no-serial">
+  ⚠ Web Serial API not available in this browser. Open this page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> (desktop) to connect a real QMX radio.
+  &nbsp;·&nbsp; <a href="https://github.com/Sparks72/QMX-Dashboard" target="_blank" rel="noopener" style="color:inherit">View source on GitHub ↗</a>
+</div>
+
+<!-- Overlay when disconnected -->
+<div class="dash-overlay" id="dash-overlay">
+  <h2>QMX Health Dashboard</h2>
+  <p>Connect your QMX via USB to begin live monitoring</p>
+  <button class="connect-big" id="btn-connect-big">Connect Radio</button>
+  <p style="font-size:11px">Chrome or Edge · 115200 baud · Web Serial API</p>
+</div>
+
+<!-- Dashboard grid -->
+<div class="dashboard">
+
+  <!-- VFO A frequency -->
+  <div class="card vfo-card" id="card-vfo">
+    <div class="card-label">VFO A — Operating Frequency</div>
+    <div class="vfo-freq" id="vfo-freq">— — —</div>
+    <div class="vfo-meta">
+      <span class="vfo-chip clk" id="chip-vfosel" data-vfo="A" title="Click: select VFO A / B">VFO A</span>
+      <span class="vfo-chip clk" id="chip-mode" title="Click: cycle CW → FSK → CW-R → FSK-R">—</span>
+      <span class="vfo-chip" id="chip-vfob">VFO B: —</span>
+      <span class="vfo-chip clk" id="chip-rit" title="Click: toggle RIT on / off">RIT: OFF</span>
+      <span class="vfo-chip clk" id="chip-split" title="Click: toggle Split / Simplex">Simplex</span>
+      <span class="vfo-chip clk tx-chip" id="chip-tx" title="Click: key TX / return to RX">RX</span>
+    </div>
+    <div class="band-row" id="band-row" title="Click a band to QSY the active VFO"></div>
+  </div>
+
+  <!-- Clock -->
+  <div class="card clock-card">
+    <div class="card-label">UTC Clock</div>
+    <div class="clock-time" id="clock-time">--:--:--</div>
+    <div class="clock-date" id="clock-date"></div>
+  </div>
+
+  <!-- SWR gauge -->
+  <div class="card gauge-card">
+    <div class="card-label">SWR</div>
+    <canvas class="gauge" id="gauge-swr" width="180" height="110"></canvas>
+    <div class="gauge-readout">
+      <div class="card-value" id="val-swr">—</div>
+      <div class="card-unit">: 1</div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-swr"></canvas></div>
+  </div>
+
+  <!-- Power output gauge -->
+  <div class="card gauge-card">
+    <div class="card-label">RF Power Output</div>
+    <canvas class="gauge" id="gauge-pwr" width="180" height="110"></canvas>
+    <div class="gauge-readout">
+      <div class="card-value" id="val-pwr">—</div>
+      <div class="card-unit">Watts</div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-pwr"></canvas></div>
+  </div>
+
+  <!-- S-meter / Signal -->
+  <div class="card signal-card">
+    <div class="card-label">Signal Strength · AGC</div>
+    <div class="s-meter-wrap">
+      <div class="s-meter-ticks">
+        <span>S1</span><span>S3</span><span>S5</span><span>S7</span><span>S9</span><span>+20</span><span>+40</span><span>+60</span>
+      </div>
+      <div class="s-meter-bar">
+        <div class="s-meter-fill" id="s-fill" style="width:0%"></div>
+      </div>
+      <div class="s-meter-labels">
+        <span>Weak</span><span>Strong</span><span>+60 dB</span>
+      </div>
+    </div>
+    <div class="signal-readout">
+      <div>
+        <div class="card-label" style="margin-bottom:2px">S-meter</div>
+        <div class="card-value" id="val-sm" style="font-size:20px">—</div>
+        <div class="card-unit">dBFS</div>
+      </div>
+      <div>
+        <div class="card-label" style="margin-bottom:2px">AGC atten.</div>
+        <div class="card-value" id="val-agc" style="font-size:20px">—</div>
+        <div class="card-unit">dB</div>
+      </div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-sm"></canvas></div>
+  </div>
+
+  <!-- Tuning knob -->
+  <div class="card knob-card" id="knob-card-tune" tabindex="0" title="Hover then use ↑↓ or scroll to tune">
+    <div class="card-label">Tuning</div>
+    <div class="tuning-knob-container">
+      <div class="tuning-knob" id="tuningKnob"><div class="tuning-knob-center"></div></div>
+    </div>
+    <div class="vfo-freq" id="vfo-freq-knob" style="font-size:18px;margin:4px 0 0">— — —</div>
+    <div style="margin:5px 0 0">
+      <span class="vfo-chip clk" id="chip-step" title="Click or scroll here to change the ↑↓ / wheel tuning step">Step: 10 Hz</span>
+    </div>
+    <div class="knob-hint">Drag: slow = fine · fast = coarse · ↑↓ &amp; scroll = step · Shift 1 kHz · Ctrl 10 kHz</div>
+  </div>
+
+  <!-- AF Gain knob -->
+  <div class="card knob-card" id="knob-card-ag" tabindex="0" title="Hover then use ↑↓ or scroll">
+    <div class="card-label">AF Gain (Volume)</div>
+    <div class="knob-wrap" id="knob-wrap-ag">
+      <svg class="knob-svg" id="knob-svg-ag" width="90" height="90" viewBox="0 0 90 90"></svg>
+      <div class="knob-readout" id="val-ag">—</div>
+      <div class="knob-unit">× 0.25 dB steps</div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-ag"></canvas></div>
+    <div class="knob-hint">↑↓ or scroll to adjust</div>
+  </div>
+
+  <!-- RF Gain knob -->
+  <div class="card knob-card" id="knob-card-rg" tabindex="0" title="Hover then use ↑↓ or scroll">
+    <div class="card-label">RF Gain</div>
+    <div class="knob-wrap" id="knob-wrap-rg">
+      <svg class="knob-svg" id="knob-svg-rg" width="90" height="90" viewBox="0 0 90 90"></svg>
+      <div class="knob-readout" id="val-rg">—</div>
+      <div class="knob-unit">dB</div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-rg"></canvas></div>
+    <div class="knob-hint">↑↓ or scroll to adjust</div>
+  </div>
+
+  <!-- Keyer speed knob -->
+  <div class="card knob-card" id="knob-card-ks" tabindex="0" title="Hover then use ↑↓ or scroll">
+    <div class="card-label">Keyer Speed</div>
+    <div class="knob-wrap" id="knob-wrap-ks">
+      <svg class="knob-svg" id="knob-svg-ks" width="90" height="90" viewBox="0 0 90 90"></svg>
+      <div class="knob-readout" id="val-ks">—</div>
+      <div class="knob-unit">WPM</div>
+    </div>
+    <div class="sparkline-wrap"><canvas class="sparkline" id="spark-ks"></canvas></div>
+    <div class="knob-hint">↑↓ or scroll to adjust</div>
+  </div>
+
+  <!-- Audio monitor -->
+  <div class="card" id="audio-card">
+    <div class="card-label">Audio Monitor · RX Sound</div>
+    <div class="audio-row">
+      <button class="audio-btn" id="audio-toggle">▶ Enable</button>
+      <select class="audio-dev" id="audio-dev" title="Select the QMX USB audio input">
+        <option value="">— select audio input —</option>
+      </select>
+    </div>
+    <div class="boost-wrap">
+      <div class="boost-head">
+        <span class="card-unit">Sound Boost</span>
+        <span class="boost-val" id="boost-val">1.0×</span>
+      </div>
+      <input type="range" class="boost-slider" id="boost-slider"
+             min="0" max="800" value="100" step="5">
+    </div>
+    <div class="vu-wrap">
+      <div class="vu-bar"><div class="vu-fill" id="vu-fill"></div></div>
+    </div>
+    <div class="audio-note">Routes QMX USB audio to your speakers. Boost amplifies up to 8×.</div>
+  </div>
+
+  <!-- Status row -->
+  <div class="card status-card">
+    <div class="card-label">Radio Status</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-item-label">TX / RX</div>
+        <div class="status-item-val" id="st-tx">RX</div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-label">Mode</div>
+        <div class="status-item-val" id="st-mode">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-label">Split</div>
+        <div class="status-item-val" id="st-split">OFF</div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-label">RIT</div>
+        <div class="status-item-val" id="st-rit">OFF</div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-label">Filter</div>
+        <div class="status-item-val" id="st-fw">—</div>
+      </div>
+      <div class="status-item">
+        <div class="status-item-label">Firmware</div>
+        <div class="status-item-val" id="st-fw2" style="font-size:10px">—</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /dashboard -->
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════
+//  THEME
+// ═══════════════════════════════════════════
+const html = document.documentElement;
+let lastSWR=null, lastPWR=null;
+const themeBtn = document.getElementById('theme-btn');
+
+function setTheme(t) {
+  html.setAttribute('data-theme', t);
+  themeBtn.textContent = t === 'dark' ? '☀' : '🌙';
+  localStorage.setItem('qmx-dash-theme', t);
+  // Redraw gauges for new theme colours
+  if (lastSWR !== null) drawGauge('gauge-swr', lastSWR/100, 0, 3.5, ['#39ff14','#f0c030','#ff4d4d'], getSWRLabel);
+  if (lastPWR !== null) drawGauge('gauge-pwr', lastPWR/10, 0, 10, ['#39ff14','#f0c030','#ff4d4d'], getPWRLabel);
+}
+
+themeBtn.addEventListener('click', () => {
+  setTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+
+// Load saved theme
+const savedTheme = localStorage.getItem('qmx-dash-theme') || 'dark';
+setTheme(savedTheme);
+
+// ═══════════════════════════════════════════
+//  SERIAL
+// ═══════════════════════════════════════════
+let port=null, reader=null, rxBuf='', rxResolve=null, rxReject=null, rxTimer=null, closing=false;
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms))}
+class CatError extends Error{constructor(cmd){super('?; from '+cmd);this.catError=true}}
+
+async function sendCAT(cmd,waitResp=true,ms=200){
+  if(!port||!port.writable)throw new Error('Not connected');
+  const w=port.writable.getWriter();
+  try{await w.write(new TextEncoder().encode(cmd))}finally{w.releaseLock()}
+  if(!waitResp)return'';
+  return new Promise((resolve,reject)=>{
+    rxResolve=resolve;rxReject=reject;
+    rxTimer=setTimeout(()=>{if(rxResolve){rxResolve=null;rxReject=null;resolve('')}},ms);
+  });
+}
+
+async function cat(cmd,wait=true,ms=200){
+  const full=cmd.endsWith(';')?cmd:cmd+';';
+  const r=await sendCAT(full,wait,ms);
+  const body=r.replace(/;$/,'').trim();
+  if(body==='?')throw new CatError(full);
+  return body;
+}
+
+async function startReader(){
+  const dec=new TextDecoder();
+  try{
+    while(port&&port.readable&&!closing){
+      reader=port.readable.getReader();
+      try{
+        while(!closing){
+          const{value,done}=await reader.read();
+          if(done||closing)break;
+          rxBuf+=dec.decode(value);
+          if(rxResolve&&rxBuf.includes(';')){
+            const si=rxBuf.indexOf(';');
+            const resp=rxBuf.slice(0,si+1);
+            const ok=/^(FA|FB|FR|FT|MD|KS|AG|RG|SP|RT|IF|ID|VN|OM|PC|SW|SM|SA|TQ|TM|FW|\?)/.test(resp);
+            if(ok){
+              rxBuf=rxBuf.slice(si+1);
+              if(rxTimer){clearTimeout(rxTimer);rxTimer=null}
+              const res=rxResolve;rxResolve=null;rxReject=null;res(resp);
+            }else{rxBuf=rxBuf.slice(si+1)}
+          }
+        }
+      }catch(e){if(rxReject){const r=rxReject;rxResolve=null;rxReject=null;r(e)}}
+      finally{try{reader.releaseLock()}catch(e){}reader=null}
+    }
+  }catch(e){}
+}
+
+async function closePort(){
+  closing=true;
+  if(rxTimer){clearTimeout(rxTimer);rxTimer=null}
+  if(rxReject){const r=rxReject;rxResolve=null;rxReject=null;r(new Error('closed'))}
+  try{if(reader)reader.cancel()}catch(e){}
+  await delay(80);
+  try{if(reader){reader.releaseLock();reader=null}}catch(e){}
+  try{if(port)await port.close()}catch(e){}
+  port=null;closing=false;
+}
+
+// ═══════════════════════════════════════════
+//  CONNECTION UI
+// ═══════════════════════════════════════════
+const connPill = document.getElementById('conn-pill');
+const connLabel = document.getElementById('conn-label');
+const dot = document.getElementById('dot');
+const overlay = document.getElementById('dash-overlay');
+
+async function connect(){
+  try{
+    port=await navigator.serial.requestPort();
+    await port.open({baudRate:parseInt(document.getElementById('baud-sel').value),dataBits:8,stopBits:1,parity:'none',flowControl:'none'});
+    startReader();
+    dot.className='dot busy';
+    connLabel.textContent='Probing…';
+    await delay(150);
+    rxBuf='';
+    // probe
+    const probe=await cat('ID;',true,400);
+    if(probe.includes('020')||probe.includes('ID')){
+      dot.className='dot on';
+      connLabel.textContent='Connected';
+      connPill.classList.add('connected');
+      toast('Connected to QMX');
+      initTuneKnob();
+      // Get firmware
+      try{const vn=await cat('VN;',true,300);document.getElementById('st-fw2').textContent=vn.replace('VN','');}catch(e){}
+      startPolling();
+    }
+  }catch(e){
+    dot.className='dot';
+    connLabel.textContent='Connect';
+    connPill.classList.remove('connected');
+    if(port){await closePort();}
+    toast('Connect failed: '+e.message,true);
+  }
+}
+
+async function disconnect(){
+  stopPolling();
+  await closePort();
+  dot.className='dot';
+  connLabel.textContent='Connect';
+  connPill.classList.remove('connected');
+  toast('Disconnected');
+}
+
+connPill.addEventListener('click', async(e)=>{
+  if(e.target.tagName==='SELECT')return; // don't trigger on baud select
+  if(port) await disconnect();
+  else await connect();
+});
+document.getElementById('btn-connect-big').addEventListener('click', connect);
+
+if(!('serial' in navigator)){
+  document.getElementById('no-serial').style.display='block';
+  document.getElementById('btn-connect-big').disabled=true;
+}
+
+// ═══════════════════════════════════════════
+//  GAUGE DRAWING
+// ═══════════════════════════════════════════
+
+
+function getCSSVar(name){
+  return getComputedStyle(html).getPropertyValue(name).trim();
+}
+
+function drawGauge(canvasId, value, min, max, colors, labelFn){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const cx=W/2, cy=H-10;
+  const r=Math.min(W,H*1.8)*0.44;
+  const startAngle=Math.PI, endAngle=0;  // semicircle
+
+  // Background arc
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,startAngle,endAngle);
+  ctx.lineWidth=14;
+  ctx.strokeStyle=getCSSVar('--gauge-rim');
+  ctx.lineCap='round';
+  ctx.stroke();
+
+  // Coloured arc segments
+  const segments=3;
+  const segColors=colors;
+  for(let i=0;i<segments;i++){
+    const sa=startAngle+i*(Math.PI/segments);
+    const ea=startAngle+(i+1)*(Math.PI/segments);
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,sa,ea);
+    ctx.lineWidth=12;
+    ctx.strokeStyle=segColors[i];
+    ctx.globalAlpha=0.25;
+    ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  // Needle value arc
+  const t=Math.max(0,Math.min(1,(value-min)/(max-min)));
+  const valAngle=startAngle+t*Math.PI;
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,startAngle,valAngle);
+  ctx.lineWidth=12;
+  const grad=ctx.createLinearGradient(cx-r,cy,cx+r,cy);
+  grad.addColorStop(0,colors[0]);
+  grad.addColorStop(0.6,colors[1]);
+  grad.addColorStop(1,colors[2]);
+  ctx.strokeStyle=grad;
+  ctx.lineCap='round';
+  ctx.stroke();
+
+  // Needle pin
+  ctx.beginPath();
+  ctx.arc(cx,cy,5,0,Math.PI*2);
+  ctx.fillStyle=getCSSVar('--needle');
+  ctx.fill();
+
+  // Needle pointer
+  const nx=cx+Math.cos(valAngle)*r*0.75;
+  const ny=cy+Math.sin(valAngle)*r*0.75;
+  ctx.beginPath();
+  ctx.moveTo(cx,cy);
+  ctx.lineTo(nx,ny);
+  ctx.lineWidth=2;
+  ctx.strokeStyle=getCSSVar('--needle');
+  ctx.lineCap='round';
+  ctx.stroke();
+
+  // Min/max labels
+  ctx.fillStyle=getCSSVar('--muted');
+  ctx.font=`9px Share Tech Mono`;
+  ctx.textAlign='left';
+  ctx.fillText(min,cx-r-2,cy+12);
+  ctx.textAlign='right';
+  ctx.fillText(max,cx+r+2,cy+12);
+}
+
+function getSWRLabel(v){return v.toFixed(2)+':1'}
+function getPWRLabel(v){return v.toFixed(1)+' W'}
+
+// ═══════════════════════════════════════════
+//  SPARKLINES
+// ═══════════════════════════════════════════
+const SPARK_LEN=60;
+const sparkData={
+  swr:[],pwr:[],sm:[],ag:[],rg:[],ks:[]
+};
+
+function pushSpark(key,val){
+  sparkData[key].push(val);
+  if(sparkData[key].length>SPARK_LEN)sparkData[key].shift();
+}
+
+function drawSpark(canvasId,data,color){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas||!data.length)return;
+  const rect=canvas.getBoundingClientRect();
+  canvas.width=rect.width||200;
+  canvas.height=rect.height||36;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const min=Math.min(...data),max=Math.max(...data);
+  const range=max-min||1;
+  ctx.beginPath();
+  data.forEach((v,i)=>{
+    const x=i/(SPARK_LEN-1)*W;
+    const y=H-((v-min)/range*(H-4)+2);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle=getCSSVar('--spark-line');
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+  // Fill
+  ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();
+  ctx.fillStyle=getCSSVar('--spark-fill');
+  ctx.fill();
+}
+
+// ═══════════════════════════════════════════
+//  MODE DECODER
+// ═══════════════════════════════════════════
+const MODE_MAP={3:'CW',6:'FSK',7:'CW-R',9:'FSK-R',1:'LSB',2:'USB'};
+
+function formatFreq(hz){
+  const n=parseInt(hz);
+  if(isNaN(n))return'— — —';
+  const mhz=(n/1e6).toFixed(6);
+  const [int,dec]=mhz.split('.');
+  return int+'.'+dec.slice(0,3)+' '+dec.slice(3);
+}
+
+function smToPercent(dbfs){
+  // Map roughly -127 to 0 dBFS → 0-100%
+  return Math.max(0,Math.min(100,(dbfs+127)/127*100));
+}
+
+// ═══════════════════════════════════════════
+//  POLLING
+// ═══════════════════════════════════════════
+let pollTimer=null;
+
+function startPolling(){
+  pollOnce();
+  const ms=parseInt(document.getElementById('interval-sel').value)||1000;
+  pollTimer=setInterval(pollOnce,ms);
+}
+
+function stopPolling(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null}
+}
+
+document.getElementById('interval-sel').addEventListener('change',()=>{
+  if(!port)return;
+  stopPolling();startPolling();
+});
+
+async function safecat(cmd,ms=200){
+  try{return await cat(cmd,true,ms)}catch(e){return null}
+}
+
+async function pollOnce(){
+  if(!port)return;
+  try{
+    // IF gives us a lot in one shot
+    const ifr=await safecat('IF;',500);
+    if(ifr){
+      const body=ifr.replace(/^IF/,'');
+      // IF field map (QMX, firmware 1.03): 11-digit freq, 5 spaces, 5-digit RIT,
+      // RIT status, XIT, mem bank, 2-digit mem ch, TX status, mode, RX VFO, scan, split, ...
+      const freq=body.slice(0,11);
+      const rit=body.slice(16,21).trim(); // signed offset e.g. +0200
+      const ritOn=body[21]==='1';
+      const tx=body[26]==='1';
+      const modeChar=body[27];
+      const onB=body[28]==='1';           // RX VFO: 0=A, 1=B
+      const split=body[30]==='1';
+
+      // Hold our locally-tuned value while a drag / recent nudge is active,
+      // otherwise the rig's (10 Hz) read-back stomps the fine 1 Hz increments.
+      const tuningActive = !!tDrag || (performance.now() - lastLocalTuneMs < TUNE_LOCK_MS);
+      const dispHz = tuningActive ? currentFreqHz : (parseInt(freq) || currentFreqHz);
+      if (!tuningActive) currentFreqHz = dispHz;
+      setFreqDisplays(dispHz);
+      drawTuneKnob();
+
+      const modeStr=MODE_MAP[modeChar]||modeChar;
+      document.getElementById('chip-mode').textContent=modeStr;
+      document.getElementById('chip-mode').className='vfo-chip clk active';
+      const stMode=document.getElementById('st-mode'); if(stMode)stMode.textContent=modeStr;
+
+      // RX VFO selector + tuning target
+      activeTuneVfo=onB?'B':'A';
+      const vs=document.getElementById('chip-vfosel');
+      if(vs){ vs.dataset.vfo=onB?'B':'A'; vs.textContent='VFO '+(onB?'B':'A'); vs.className='vfo-chip clk'+(onB?' active':''); }
+
+      const txEl=document.getElementById('chip-tx');
+      txEl.textContent=tx?'TX':'RX';
+      txEl.className='vfo-chip clk tx-chip'+(tx?' active':'');
+      document.getElementById('st-tx').textContent=tx?'TX':'RX';
+      document.getElementById('st-tx').className='status-item-val'+(tx?' tx':' off');
+
+      document.getElementById('chip-rit').textContent='RIT: '+(ritOn?(rit||'ON'):'OFF');
+      document.getElementById('chip-rit').className='vfo-chip clk'+(ritOn?' active':'');
+      document.getElementById('st-rit').textContent=ritOn?(rit||'ON'):'OFF';
+      document.getElementById('st-rit').className='status-item-val'+(ritOn?' on':' off');
+
+      document.getElementById('chip-split').textContent=split?'Split':'Simplex';
+      document.getElementById('chip-split').className='vfo-chip clk'+(split?' active':'');
+      document.getElementById('st-split').textContent=split?'ON':'OFF';
+      document.getElementById('st-split').className='status-item-val'+(split?' on':' off');
+    }
+
+    // VFO B (cache + display)
+    const fb=await safecat('FB;');
+    if(fb){
+      const f=parseInt(fb.replace('FB',''));
+      if(f) vfoBHz=f;
+      document.getElementById('chip-vfob').textContent='VFO B: '+(f/1e6).toFixed(4)+' MHz';
+    }
+
+    // VFO A (cache so a VFO swap can update the display instantly)
+    const fa=await safecat('FA;');
+    if(fa){ const v=parseInt(fa.replace('FA','')); if(v) vfoAHz=v; }
+
+    // S-meter
+    const sm=await safecat('SM;');
+    if(sm){
+      const v=parseInt(sm.replace('SM',''));
+      document.getElementById('val-sm').textContent=v;
+      const pct=smToPercent(v);
+      document.getElementById('s-fill').style.width=pct+'%';
+      pushSpark('sm',v);
+      drawSpark('spark-sm',sparkData.sm);
+    }
+
+    // AGC
+    const sa=await safecat('SA;');
+    if(sa){
+      const v=parseInt(sa.replace('SA',''));
+      document.getElementById('val-agc').textContent=v;
+    }
+
+    // SWR (only meaningful in TX, show last known otherwise)
+    const sw=await safecat('SW;');
+    if(sw&&sw!=='SW'){
+      const v=parseInt(sw.replace('SW',''));
+      lastSWR=v;
+      const swr=v/100;
+      document.getElementById('val-swr').textContent=swr.toFixed(2);
+      const swrEl=document.getElementById('val-swr');
+      swrEl.className='card-value'+(swr<1.5?' good':swr<2.5?' warn':' err');
+      drawGauge('gauge-swr',swr,1,3.5,['#39ff14','#f0c030','#ff4d4d'],getSWRLabel);
+      pushSpark('swr',swr);
+      drawSpark('spark-swr',sparkData.swr);
+    }
+
+    // Power
+    const pc=await safecat('PC;');
+    if(pc){
+      const v=parseInt(pc.replace('PC',''));
+      lastPWR=v;
+      const pwr=v/10;
+      document.getElementById('val-pwr').textContent=pwr.toFixed(1);
+      drawGauge('gauge-pwr',pwr,0,10,['#39ff14','#f0c030','#ff4d4d'],getPWRLabel);
+      pushSpark('pwr',pwr);
+      drawSpark('spark-pwr',sparkData.pwr);
+    }
+
+    // AF gain
+    const ag=await safecat('AG0;');
+    if(ag){
+      const v=parseInt(ag.replace('AG0',''));
+      document.getElementById('val-ag').textContent=v;
+      syncKnobFromPoll('ag',v);
+      pushSpark('ag',v);
+      drawSpark('spark-ag',sparkData.ag);
+    }
+
+    // RF gain
+    const rg=await safecat('RG;');
+    if(rg){
+      const v=parseInt(rg.replace('RG',''));
+      document.getElementById('val-rg').textContent=v;
+      syncKnobFromPoll('rg',v);
+      pushSpark('rg',v);
+      drawSpark('spark-rg',sparkData.rg);
+    }
+
+    // Keyer speed
+    const ks=await safecat('KS;');
+    if(ks){
+      const v=parseInt(ks.replace('KS',''));
+      document.getElementById('val-ks').textContent=v;
+      syncKnobFromPoll('ks',v);
+      pushSpark('ks',v);
+      drawSpark('spark-ks',sparkData.ks);
+    }
+
+    // Filter bandwidth
+    const fw=await safecat('FW;');
+    if(fw){
+      const v=parseInt(fw.replace('FW',''));
+      document.getElementById('st-fw').textContent=v+'Hz';
+    }
+
+    // Clock from QMX
+    const tm=await safecat('TM;');
+    if(tm){
+      const t=tm.replace('TM','');
+      if(t.length>=6){
+        document.getElementById('clock-time').textContent=t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);
+      }
+    }else{
+      // Fall back to local UTC
+      const n=new Date();
+      document.getElementById('clock-time').textContent=
+        n.getUTCHours().toString().padStart(2,'0')+':'+
+        n.getUTCMinutes().toString().padStart(2,'0')+':'+
+        n.getUTCSeconds().toString().padStart(2,'0');
+    }
+
+    const now=new Date();
+    document.getElementById('clock-date').textContent=
+      now.toUTCString().slice(0,16)+' UTC';
+
+  }catch(e){
+    // Port error — stop polling
+    if(e.message&&e.message.includes('closed')){
+      stopPolling();
+      dot.className='dot';
+      connLabel.textContent='Connect';
+      connPill.classList.remove('connected');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+// Draw empty gauges
+drawGauge('gauge-swr',1,1,3.5,['#39ff14','#f0c030','#ff4d4d'],getSWRLabel);
+drawGauge('gauge-pwr',0,0,10,['#39ff14','#f0c030','#ff4d4d'],getPWRLabel);
+
+// Toast
+let toastTimer=null;
+function toast(msg,err=false){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.className='show';
+  el.style.borderColor=err?'var(--err)':'var(--border2)';
+  el.style.color=err?'var(--err)':'var(--text)';
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.className='',3500);
+}
+// ═══════════════════════════════════════════
+//  ROTARY KNOB ENGINE
+// ═══════════════════════════════════════════
+function drawKnob(svgId, value, min, max, color) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const cx = 45, cy = 45, r = 36;
+  const startDeg = 135, endDeg = 405; // 270° travel
+  const fraction = max > min ? (value - min) / (max - min) : 0;
+  const angleDeg = startDeg + fraction * (endDeg - startDeg);
+  const toRad = d => d * Math.PI / 180;
+
+  function arc(fromDeg, toDeg) {
+    const x1 = cx + r * Math.cos(toRad(fromDeg));
+    const y1 = cy + r * Math.sin(toRad(fromDeg));
+    const x2 = cx + r * Math.cos(toRad(toDeg));
+    const y2 = cy + r * Math.sin(toRad(toDeg));
+    const large = (toDeg - fromDeg) > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+  }
+
+  const accentColor = color || getComputedStyle(document.documentElement).getPropertyValue('--glow').trim();
+  const trackColor  = getComputedStyle(document.documentElement).getPropertyValue('--border2').trim();
+
+  // Pointer line: from just outside centre hub to near arc
+  const lineInner = 6;   // start radius (clears centre pin)
+  const lineOuter = r - 6; // end radius (inside arc track)
+  const lx1 = cx + lineInner * Math.cos(toRad(angleDeg));
+  const ly1 = cy + lineInner * Math.sin(toRad(angleDeg));
+  const lx2 = cx + lineOuter * Math.cos(toRad(angleDeg));
+  const ly2 = cy + lineOuter * Math.sin(toRad(angleDeg));
+
+  svg.innerHTML = `
+    <defs>
+      <filter id="knob-glow-${svgId}" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="${r+4}" fill="var(--bg2)" stroke="var(--border)" stroke-width="1"/>
+    <path d="${arc(startDeg, endDeg)}" fill="none" stroke="${trackColor}" stroke-width="5" stroke-linecap="round"/>
+    <path d="${arc(startDeg, angleDeg)}" fill="none" stroke="${accentColor}" stroke-width="5" stroke-linecap="round"
+          filter="url(#knob-glow-${svgId})"/>
+    <circle cx="${cx}" cy="${cy}" r="18" fill="var(--surface)" stroke="var(--border2)" stroke-width="1"/>
+    <line x1="${lx1}" y1="${ly1}" x2="${lx2}" y2="${ly2}"
+          stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round"
+          style="filter:drop-shadow(0 0 3px ${accentColor})"/>
+    <circle cx="${cx}" cy="${cy}" r="3" fill="${accentColor}"/>`;
+}
+
+// ── Knob state ──────────────────────────────────────────────────────────────
+const knobs = {
+  ag: { min:0,  max:255, step:1,  value:128, cmd: v => `AG0${String(v).padStart(3,'0')};`, svgId:'knob-svg-ag', valId:'val-ag' },
+  rg: { min:0,  max:255, step:1,  value:128, cmd: v => `RG${String(v).padStart(3,'0')};`,  svgId:'knob-svg-rg', valId:'val-rg' },
+  ks: { min:5,  max:60,  step:1,  value:20,  cmd: v => `KS${String(v).padStart(3,'0')};`,  svgId:'knob-svg-ks', valId:'val-ks' },
+};
+
+let currentFreqHz = 0; // updated from polling
+let activeTuneVfo = 'A';   // which VFO the tuning knob writes to (A or B)
+let vfoAHz = 0, vfoBHz = 0; // last-known per-VFO frequencies, for instant swap
+
+// While tuning locally we must not let the poll's frequency read-back overwrite
+// our fine (1 Hz) increments. Record when we last tuned; the poll holds off for
+// TUNE_LOCK_MS after that (and always while a drag is in progress).
+let lastLocalTuneMs = 0;
+const TUNE_LOCK_MS = 700;
+// If your QMX firmware only resolves 10 Hz over CAT, set this to 10 so the
+// dashboard snaps to the same grid the rig actually uses (avoids display drift).
+const TUNE_STEP_HZ = 1;
+
+// Selectable ↑↓ / wheel tuning step (the little "Step:" chip cycles through these).
+const TUNE_STEPS = [1, 10, 100, 1000, 10000];
+let tuneStepHz = 10;
+function fmtStep(hz){ return hz >= 1000 ? (hz/1000)+' kHz' : hz+' Hz'; }
+function setTuneStep(hz){
+  tuneStepHz = hz;
+  const c = document.getElementById('chip-step');
+  if (c) c.textContent = 'Step: ' + fmtStep(hz);
+}
+function cycleTuneStep(dir){
+  let i = TUNE_STEPS.indexOf(tuneStepHz);
+  if (i < 0) i = 1;
+  i = (i + dir + TUNE_STEPS.length) % TUNE_STEPS.length;
+  setTuneStep(TUNE_STEPS[i]);
+}
+
+function updateKnobDisplay(k) {
+  const cfg = knobs[k];
+  drawKnob(cfg.svgId, cfg.value, cfg.min, cfg.max);
+  const el = document.getElementById(cfg.valId);
+  if (el) el.textContent = cfg.value;
+}
+
+async function setKnob(k, newVal) {
+  const cfg = knobs[k];
+  newVal = Math.max(cfg.min, Math.min(cfg.max, newVal));
+  if (newVal === cfg.value) return;
+  cfg.value = newVal;
+  updateKnobDisplay(k);
+  if (port) {
+    try { await cat(cfg.cmd(newVal), false, 150); } catch(e) {}
+  }
+}
+
+// Tuning knob — CSS div, free spinning via transform: rotate()
+let tuneRotDeg = -90; // start at 12 o'clock (pointer at top via ::before/::after)
+
+function initTuneKnob() {
+  drawTuneKnob();
+}
+
+function drawTuneKnob() {
+  const knob = document.getElementById('tuningKnob');
+  if (knob) knob.style.transform = `rotate(${tuneRotDeg}deg)`;
+}
+
+// Update EVERY frequency readout together so the big operating display tracks
+// the knob dial 1:1 during a live tune (previously only the knob readout moved
+// between polls, so the operating readout lagged / stepped at the poll rate).
+function setFreqDisplays(hz) {
+  const s = formatFreq(hz);
+  const big  = document.getElementById('vfo-freq');       if (big)  big.textContent  = s;
+  const knob = document.getElementById('vfo-freq-knob');  if (knob) knob.textContent = s;
+  const sf   = document.getElementById('s-freq');         if (sf)   sf.textContent   = s;
+  highlightBand(hz);
+}
+
+async function tuneBy(deltaHz) {
+  if (!port || !currentFreqHz) return;
+  const newFreq = Math.max(1000000, currentFreqHz + deltaHz);
+  const cmd = 'FA' + String(newFreq).padStart(11,'0') + ';';
+  try {
+    await cat(cmd, false, 150);
+    currentFreqHz = newFreq;
+    setFreqDisplays(newFreq);
+    drawTuneKnob();
+  } catch(e) {}
+}
+
+// ── Wire up each knob card ──────────────────────────────────────────────────
+// ── Debounced CAT sender for knobs ─────────────────────────────────────────
+const knobCatTimers = {};
+function knobSendCAT(key) {
+  clearTimeout(knobCatTimers[key]);
+  knobCatTimers[key] = setTimeout(async () => {
+    if (!port) return;
+    const cfg = knobs[key];
+    try { await cat(cfg.cmd(cfg.value), false, 150); } catch(e) {}
+  }, 80);
+}
+
+// Update display immediately, send CAT debounced
+function nudgeKnob(key, delta) {
+  const cfg = knobs[key];
+  const newVal = Math.max(cfg.min, Math.min(cfg.max, cfg.value + delta));
+  if (newVal === cfg.value) return;
+  cfg.value = newVal;
+  drawKnob(cfg.svgId, newVal, cfg.min, cfg.max);
+  const el = document.getElementById(cfg.valId);
+  if (el) el.textContent = newVal;
+  knobSendCAT(key);
+}
+
+// ═══════════════════════════════════════════
+//  KNOB DRAG — angular model (atan2 from knob centre)
+//  Matches the pattern used in the reference interface.
+//  mousedown captures centre + start angle on the element;
+//  mousemove on document computes delta angle → rotation → value.
+// ═══════════════════════════════════════════
+
+const MIN_ROT = -135;   // degrees — 7 o'clock
+const MAX_ROT =  135;   // degrees — 5 o'clock
+const TOT_ROT = MAX_ROT - MIN_ROT;  // 270°
+
+// Per-knob rotation state (degrees)
+const knobRot = { ag: MIN_ROT, rg: MIN_ROT, ks: MIN_ROT };
+
+// Convert rotation (degrees) → value within [min,max]
+function rotToVal(rot, min, max) {
+  return Math.round(min + ((rot - MIN_ROT) / TOT_ROT) * (max - min));
+}
+// Convert value → rotation
+function valToRot(val, min, max) {
+  return MIN_ROT + ((val - min) / (max - min)) * TOT_ROT;
+}
+
+// Active drag context
+let kDrag = null;  // { key, cx, cy }
+
+function knobMouseDown(e, key) {
+  e.preventDefault();
+  // Use the SVG element's box for the centre
+  const svg = document.getElementById(knobs[key].svgId);
+  const rect = (svg || e.currentTarget).getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  kDrag = { key, cx, cy };
+  applyKnobAngle(e);   // grab immediately under the pointer
+  document.getElementById('knob-drag-style') || (() => {
+    const s = document.createElement('style');
+    s.id = 'knob-drag-style';
+    s.textContent = '* { cursor: default !important; }';
+    document.head.appendChild(s);
+  })();
+  document.addEventListener('mousemove', knobMouseMove);
+  document.addEventListener('mouseup',   knobMouseUp);
+}
+
+// Map the cursor's absolute angle to a value within the 270° arc and apply it.
+// Uses the SAME angle space as drawKnob: SVG 0°=3 o'clock, arc runs
+// startDeg(135°, =7 o'clock) clockwise to endDeg(405°, =5 o'clock).
+function applyKnobAngle(e) {
+  if (!kDrag) return;
+  const key = kDrag.key;
+  const cfg = knobs[key];
+
+  // Raw SVG angle to cursor, normalised to 0..360
+  let deg = Math.atan2(e.clientY - kDrag.cy, e.clientX - kDrag.cx) * 180 / Math.PI;
+  if (deg < 0) deg += 360;          // 0..360, 0°=3 o'clock, 90°=down
+
+  // The arc occupies 135°..360° and 0°..45° (i.e. 135° → 405°).
+  // Shift cursor angle into the 135..405 space.
+  let a = deg;
+  if (a < 135) a += 360;            // values 0..45 become 360..405
+  // Now a is in [135, 495]; valid arc is [135, 405]. Anything 405..495 is the
+  // bottom dead-zone — snap to nearer end.
+  let fraction;
+  if (a <= 405) {
+    fraction = (a - 135) / 270;     // 0..1 across the arc
+  } else {
+    fraction = (a < 450) ? 1 : 0;   // dead-zone: nearer to max (top of 405) or min
+  }
+  fraction = Math.max(0, Math.min(1, fraction));
+
+  const newVal = Math.round(cfg.min + fraction * (cfg.max - cfg.min));
+  if (newVal !== cfg.value) {
+    cfg.value = newVal;
+    drawKnob(cfg.svgId, newVal, cfg.min, cfg.max);
+    const el = document.getElementById(cfg.valId);
+    if (el) el.textContent = newVal;
+    knobSendCAT(key);
+  }
+}
+
+function knobMouseMove(e) {
+  applyKnobAngle(e);
+}
+
+function knobMouseUp() {
+  if (!kDrag) return;
+  document.removeEventListener('mousemove', knobMouseMove);
+  document.removeEventListener('mouseup',   knobMouseUp);
+  const s = document.getElementById('knob-drag-style');
+  if (s) s.remove();
+  kDrag = null;
+}
+
+function wireKnob(cardId, key) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+
+  // Auto-focus on hover
+  card.addEventListener('mouseenter', () => card.focus());
+  function onWheel(e) {
+    e.preventDefault();
+    const step = knobs[key].step;
+    nudgeKnob(key, e.deltaY < 0 ? step : -step);
+    // Keep rotation in sync with nudge
+    knobRot[key] = valToRot(knobs[key].value, knobs[key].min, knobs[key].max);
+  }
+  card.addEventListener('wheel', onWheel, { passive: false });
+  const svg = document.getElementById(knobs[key].svgId);
+  if (svg) svg.addEventListener('wheel', onWheel, { passive: false });
+
+  // Angular drag — listen on SVG (the visual knob) for a tight hit target
+  const dragTarget = svg || card;
+  dragTarget.addEventListener('mousedown', e => knobMouseDown(e, key));
+
+  // Keyboard
+  card.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp')   { e.preventDefault(); nudgeKnob(key,  knobs[key].step); knobRot[key] = valToRot(knobs[key].value, knobs[key].min, knobs[key].max); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); nudgeKnob(key, -knobs[key].step); knobRot[key] = valToRot(knobs[key].value, knobs[key].min, knobs[key].max); }
+  });
+}
+
+wireKnob('knob-card-ag', 'ag');
+wireKnob('knob-card-rg', 'rg');
+wireKnob('knob-card-ks', 'ks');
+
+// Init rotations from default values
+Object.keys(knobs).forEach(k => {
+  knobRot[k] = valToRot(knobs[k].value, knobs[k].min, knobs[k].max);
+  updateKnobDisplay(k);
+});
+initTuneKnob();
+
+// ── Tuning knob — also angular drag ────────────────────────────────────────
+// ── Fire-and-forget CAT set sender (own writer, never reads — won't disturb poll) ──
+let _setInFlight=false; const _setQueue=[];
+function sendSetCAT(cmd){
+  if(!port||!port.writable)return;
+  _setQueue.push(cmd.endsWith(';')?cmd:cmd+';');
+  _flushSetCAT();
+}
+function _flushSetCAT(){
+  if(!port||!port.writable||_setInFlight||!_setQueue.length)return;
+  const cmd=_setQueue.shift();
+  let w;
+  try{ w=port.writable.getWriter(); }
+  catch(e){ _setQueue.unshift(cmd); setTimeout(_flushSetCAT,30); return; } // writer busy, retry
+  _setInFlight=true;
+  w.write(new TextEncoder().encode(cmd)).catch(()=>{}).finally(()=>{
+    w.releaseLock(); _setInFlight=false; if(_setQueue.length)_flushSetCAT();
+  });
+}
+
+// ── Clickable operating-frequency chips ─────────────────────────────────────
+// Each click sends one CAT set command and updates the chip optimistically;
+// the next poll confirms (or reverts) from the rig's actual state.
+const MODE_CYCLE=[3,6,7,9]; // CW, FSK, CW-R, FSK-R (QMX MD set values)
+
+function wireFreqBox(){
+  const mode=document.getElementById('chip-mode');
+  const vsel=document.getElementById('chip-vfosel');
+  const rit =document.getElementById('chip-rit');
+  const spl =document.getElementById('chip-split');
+  const tx  =document.getElementById('chip-tx');
+
+  mode.addEventListener('click',()=>{
+    if(!port)return;
+    const cur=mode.textContent.trim();
+    const curCode=parseInt(Object.keys(MODE_MAP).find(k=>MODE_MAP[k]===cur));
+    const i=MODE_CYCLE.indexOf(curCode);
+    const next=MODE_CYCLE[(i+1)%MODE_CYCLE.length];
+    sendSetCAT('MD'+next);
+    const s=MODE_MAP[next];
+    mode.textContent=s; mode.className='vfo-chip clk active';
+    const sm=document.getElementById('st-mode'); if(sm)sm.textContent=s;
+  });
+
+  vsel.addEventListener('click',()=>{
+    if(!port)return;
+    const next=vsel.dataset.vfo==='B'?0:1; // FR0=VFO A, FR1=VFO B
+    sendSetCAT('FR'+next);
+    vsel.dataset.vfo=next?'B':'A';
+    vsel.textContent='VFO '+(next?'B':'A');
+    vsel.className='vfo-chip clk'+(next?' active':'');
+    // make the selected VFO the live tuning frequency right away
+    activeTuneVfo=next?'B':'A';
+    const newHz=next?vfoBHz:vfoAHz;
+    if(newHz){
+      currentFreqHz=newHz;
+      const big=document.getElementById('vfo-freq'); if(big)big.textContent=formatFreq(newHz);
+      const kf=document.getElementById('vfo-freq-knob'); if(kf)kf.textContent=formatFreq(newHz);
+      drawTuneKnob();
+    }
+  });
+
+  rit.addEventListener('click',()=>{
+    if(!port)return;
+    const on=rit.classList.contains('active');
+    sendSetCAT(on?'RT0':'RT1');
+    rit.textContent='RIT: '+(on?'OFF':'ON');
+    rit.className='vfo-chip clk'+(on?'':' active');
+    const sr=document.getElementById('st-rit');
+    if(sr){ sr.textContent=on?'OFF':'ON'; sr.className='status-item-val'+(on?' off':' on'); }
+  });
+
+  spl.addEventListener('click',()=>{
+    if(!port)return;
+    const on=spl.classList.contains('active');
+    sendSetCAT(on?'SP0':'SP1');
+    spl.textContent=on?'Simplex':'Split';
+    spl.className='vfo-chip clk'+(on?'':' active');
+    const ss=document.getElementById('st-split');
+    if(ss){ ss.textContent=on?'OFF':'ON'; ss.className='status-item-val'+(on?' off':' on'); }
+  });
+
+  tx.addEventListener('click',()=>{
+    if(!port)return;
+    const onTx=tx.classList.contains('active');
+    sendSetCAT(onTx?'RX':'TX'); // RX=TQ0, TX=TQ1 — keys the rig live
+    tx.textContent=onTx?'RX':'TX';
+    tx.className='vfo-chip clk tx-chip'+(onTx?'':' active');
+    const stx=document.getElementById('st-tx');
+    if(stx){ stx.textContent=onTx?'RX':'TX'; stx.className='status-item-val'+(onTx?' off':' tx'); }
+  });
+}
+wireFreqBox();
+
+// ── Throttled FA sender — never queues more than one in-flight write ────────
+let tuneInFlight = false;
+let tunePendingFreq = null;
+
+function sendTuneCAT(freq) {
+  tunePendingFreq = freq;
+  if (tuneInFlight) return; // will be sent when current one completes
+  _flushTuneCAT();
+}
+
+function _flushTuneCAT() {
+  if (!port || tunePendingFreq === null) return;
+  const freq = tunePendingFreq;
+  tunePendingFreq = null;
+  tuneInFlight = true;
+  const w = port.writable.getWriter();
+  const cmd = (activeTuneVfo === 'B' ? 'FB' : 'FA');
+  w.write(new TextEncoder().encode(cmd + String(freq).padStart(11,'0') + ';'))
+    .catch(() => {})
+    .finally(() => {
+      w.releaseLock();
+      tuneInFlight = false;
+      if (tunePendingFreq !== null) _flushTuneCAT(); // drain any pending
+    });
+}
+
+function nudgeTune(deltaHz) {
+  if (!currentFreqHz) return;
+  currentFreqHz = Math.max(1000000, currentFreqHz + deltaHz);
+  if (TUNE_STEP_HZ > 1) currentFreqHz = Math.round(currentFreqHz / TUNE_STEP_HZ) * TUNE_STEP_HZ;
+  lastLocalTuneMs = performance.now();
+  tuneRotDeg += deltaHz / 100; // 1° per 100 Hz visual rotation
+  setFreqDisplays(currentFreqHz);
+  drawTuneKnob();
+  if (port) sendTuneCAT(currentFreqHz);
+}
+
+let tDrag = null;
+
+function tuneMouseDown(e) {
+  e.preventDefault();
+  const knob = document.getElementById('tuningKnob');
+  const rect = knob.getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  // Absolute angle from centre to cursor, in degrees
+  const ang = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+  tDrag = { cx, cy, lastAng: ang, lastT: performance.now(), acc: 0 };
+  // Snap the needle to the cursor immediately so it "grabs" under the pointer
+  tuneRotDeg = ang + 90;          // +90 because CSS pointer sits at top
+  drawTuneKnob();
+  document.getElementById('knob-drag-style') || (() => {
+    const s = document.createElement('style');
+    s.id = 'knob-drag-style';
+    s.textContent = '* { cursor: default !important; }';
+    document.head.appendChild(s);
+  })();
+  document.addEventListener('mousemove', tuneMouseMove);
+  document.addEventListener('mouseup',   tuneMouseUp);
+}
+
+// ── Velocity-sensitive tuning rate ─────────────────────────────────────────
+// Slow, deliberate drags ≈ 1 Hz/deg (fine tuning); a fast spin ramps the rate
+// up so the same knob covers up to ~10 kHz steps. Tune these four to taste.
+const TUNE_HZ_MIN      = 1;      // Hz per degree at slow speed (fine)
+const TUNE_HZ_MAX      = 400;    // Hz per degree at full speed (coarse)
+const TUNE_V_REF       = 1500;   // deg/sec at which the rate reaches TUNE_HZ_MAX
+const TUNE_EXP         = 2.6;    // acceleration curve (higher = wider fine zone)
+const TUNE_HZ_MAX_STEP = 12000;  // clamp per-frame jump so a wild flick can't leap
+
+function tuneMouseMove(e) {
+  if (!tDrag) return;
+  const now = performance.now();
+  const dt  = Math.max(1, now - tDrag.lastT) / 1000; // seconds, floored at 1 ms
+  tDrag.lastT = now;
+
+  // Absolute angle to cursor — needle points straight at the mouse (hugs it)
+  const ang = Math.atan2(e.clientY - tDrag.cy, e.clientX - tDrag.cx) * 180 / Math.PI;
+  // Unwrapped delta since last frame
+  let dAng = ang - tDrag.lastAng;
+  if (dAng >  180) dAng -= 360;
+  if (dAng < -180) dAng += 360;
+  tDrag.lastAng = ang;
+
+  // Needle hugs the cursor
+  tuneRotDeg = ang + 90;
+
+  // Angular speed → Hz-per-degree, blended along a power curve
+  const v    = Math.abs(dAng) / dt;                 // deg/sec
+  const norm = Math.min(1, v / TUNE_V_REF);         // 0..1
+  const hzPerDeg = TUNE_HZ_MIN +
+    (TUNE_HZ_MAX - TUNE_HZ_MIN) * Math.pow(norm, TUNE_EXP);
+
+  // Signed Hz for this frame, clamped against runaway flicks
+  let hzDelta = dAng * hzPerDeg;
+  hzDelta = Math.max(-TUNE_HZ_MAX_STEP, Math.min(TUNE_HZ_MAX_STEP, hzDelta));
+
+  // Accumulate the fractional part so slow drags keep true 1 Hz resolution
+  tDrag.acc += hzDelta;
+  const whole = Math.trunc(tDrag.acc);
+  tDrag.acc  -= whole;
+
+  if (whole !== 0 && currentFreqHz) {
+    currentFreqHz = Math.max(1000000, currentFreqHz + whole);
+    if (TUNE_STEP_HZ > 1) currentFreqHz = Math.round(currentFreqHz / TUNE_STEP_HZ) * TUNE_STEP_HZ;
+    lastLocalTuneMs = performance.now();
+    setFreqDisplays(currentFreqHz);
+    if (port) sendTuneCAT(currentFreqHz);
+  }
+  drawTuneKnob();
+}
+
+function tuneMouseUp() {
+  if (!tDrag) return;
+  document.removeEventListener('mousemove', tuneMouseMove);
+  document.removeEventListener('mouseup',   tuneMouseUp);
+  const s = document.getElementById('knob-drag-style');
+  if (s) s.remove();
+  tDrag = null;
+}
+
+const tuneCard = document.getElementById('knob-card-tune');
+if (tuneCard) {
+  // Auto-focus when mouse enters the card — no click needed
+  tuneCard.addEventListener('mouseenter', () => tuneCard.focus());
+  const tuneSvg = document.getElementById('knob-svg-tune');
+
+  function onTuneWheel(e) {
+    e.preventDefault();
+    nudgeTune(e.deltaY < 0 ? tuneStepHz : -tuneStepHz);
+  }
+  tuneCard.addEventListener('wheel', onTuneWheel, { passive: false });
+
+  // Step chip: click cycles up through the steps, scroll cycles either way.
+  const stepChip = document.getElementById('chip-step');
+  if (stepChip) {
+    setTuneStep(tuneStepHz);   // paint initial label
+    stepChip.addEventListener('click', e => { e.stopPropagation(); cycleTuneStep(+1); });
+    stepChip.addEventListener('wheel', e => {
+      e.preventDefault(); e.stopPropagation();   // don't also tune the VFO
+      cycleTuneStep(e.deltaY < 0 ? +1 : -1);
+    }, { passive: false });
+  }
+
+  const tuningKnobEl = document.getElementById('tuningKnob');
+  const tuneDragTarget = tuningKnobEl || tuneCard;
+  tuneDragTarget.addEventListener('mousedown', tuneMouseDown);
+
+  tuneCard.addEventListener('keydown', e => {
+    if (!['ArrowUp','ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const step = e.ctrlKey ? 10000 : e.shiftKey ? 1000 : tuneStepHz;
+    nudgeTune(e.key === 'ArrowUp' ? step : -step);
+  });
+}
+
+// ── Band-change buttons ─────────────────────────────────────────────────────
+// hz = QSY target (CW/QRP-friendly spots); lo/hi = band edges for the active
+// highlight. Trim this list to the bands your QMX actually covers.
+const BANDS = [
+  { name:'160m', hz: 1836000, lo: 1810000, hi: 2000000 },
+  { name:'80m',  hz: 3560000, lo: 3500000, hi: 3800000 },
+  { name:'60m',  hz: 5354000, lo: 5250000, hi: 5450000 },
+  { name:'40m',  hz: 7030000, lo: 7000000, hi: 7200000 },
+  { name:'30m',  hz:10116000, lo:10100000, hi:10150000 },
+  { name:'20m',  hz:14060000, lo:14000000, hi:14350000 },
+  { name:'17m',  hz:18096000, lo:18068000, hi:18168000 },
+  { name:'15m',  hz:21060000, lo:21000000, hi:21450000 },
+  { name:'12m',  hz:24906000, lo:24890000, hi:24990000 },
+  { name:'10m',  hz:28060000, lo:28000000, hi:29700000 },
+];
+
+function qsyBand(hz) {
+  currentFreqHz = hz;
+  lastLocalTuneMs = performance.now();  // hold off the poll read-back briefly
+  setFreqDisplays(hz);                  // also refreshes the band highlight
+  drawTuneKnob();
+  if (port) sendTuneCAT(hz);            // writes to the active VFO (A or B)
+}
+
+function highlightBand(hz) {
+  const row = document.getElementById('band-row');
+  if (!row) return;
+  row.querySelectorAll('.band-btn').forEach(el => {
+    const lo = +el.dataset.lo, hi = +el.dataset.hi;
+    el.classList.toggle('active', hz >= lo && hz <= hi);
+  });
+}
+
+function buildBandRow() {
+  const row = document.getElementById('band-row');
+  if (!row) return;
+  row.innerHTML = '';
+  BANDS.forEach(b => {
+    const el = document.createElement('span');
+    el.className = 'band-btn';
+    el.textContent = b.name;
+    el.dataset.hz = b.hz; el.dataset.lo = b.lo; el.dataset.hi = b.hi;
+    el.title = 'QSY to ' + (b.hz / 1e6).toFixed(3) + ' MHz';
+    el.addEventListener('click', () => qsyBand(b.hz));
+    row.appendChild(el);
+  });
+}
+buildBandRow();
+
+// ── Sync knob values from poll data ────────────────────────────────────────
+// Patch into pollOnce: after each AG/RG/KS read, sync the knob silently
+const _origPollOnce = pollOnce;
+// We intercept by monkey-patching the display update to also call drawKnob.
+// The knob value is updated each poll so it tracks real radio state.
+function syncKnobFromPoll(key, rawVal) {
+  const cfg = knobs[key];
+  const v = Math.max(cfg.min, Math.min(cfg.max, rawVal));
+  if (cfg.value !== v) {
+    cfg.value = v;
+    drawKnob(cfg.svgId, v, cfg.min, cfg.max);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  AUDIO MONITOR — capture QMX USB audio → gain (boost) → speakers
+// ═══════════════════════════════════════════
+let audioCtx = null, audioStream = null, audioSource = null,
+    gainNode = null, analyser = null, audioRunning = false, vuRAF = null;
+
+const audioToggle = document.getElementById('audio-toggle');
+const audioDev    = document.getElementById('audio-dev');
+const boostSlider = document.getElementById('boost-slider');
+const boostVal    = document.getElementById('boost-val');
+const vuFill      = document.getElementById('vu-fill');
+
+// Populate device list (labels need a prior permission grant)
+async function listAudioInputs() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter(d => d.kind === 'audioinput');
+    const cur = audioDev.value;
+    audioDev.innerHTML = '<option value="">— select audio input —</option>';
+    inputs.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Audio input ${i+1}`;
+      audioDev.appendChild(opt);
+    });
+    // Auto-select anything that looks like the QMX/QDX
+    const qmx = inputs.find(d => /qmx|qdx|qrp|usb audio|cmedia|c-media/i.test(d.label));
+    if (qmx && !cur) audioDev.value = qmx.deviceId;
+    else if (cur) audioDev.value = cur;
+  } catch (e) { /* ignore */ }
+}
+
+async function startAudio() {
+  try {
+    const devId = audioDev.value;
+    const constraints = {
+      audio: {
+        deviceId: devId ? { exact: devId } : undefined,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    };
+    audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Refresh labels now that permission is granted
+    await listAudioInputs();
+
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    audioSource = audioCtx.createMediaStreamSource(audioStream);
+    gainNode   = audioCtx.createGain();
+    gainNode.gain.value = parseInt(boostSlider.value) / 100;
+    analyser   = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+
+    audioSource.connect(gainNode);
+    gainNode.connect(analyser);
+    gainNode.connect(audioCtx.destination);  // to speakers
+
+    audioRunning = true;
+    audioToggle.textContent = '■ Disable';
+    audioToggle.classList.add('active');
+    toast('Audio monitor on');
+    runVU();
+  } catch (e) {
+    toast('Audio failed: ' + (e.message || e.name), true);
+  }
+}
+
+function stopAudio() {
+  audioRunning = false;
+  if (vuRAF) cancelAnimationFrame(vuRAF);
+  try { audioSource && audioSource.disconnect(); } catch(e){}
+  try { gainNode && gainNode.disconnect(); } catch(e){}
+  try { analyser && analyser.disconnect(); } catch(e){}
+  if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  audioCtx = audioStream = audioSource = gainNode = analyser = null;
+  audioToggle.textContent = '▶ Enable';
+  audioToggle.classList.remove('active');
+  vuFill.style.width = '0%';
+}
+
+function runVU() {
+  if (!audioRunning || !analyser) return;
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(buf);
+  // RMS level
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const v = (buf[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / buf.length);
+  const pct = Math.min(100, rms * 140);
+  vuFill.style.width = pct.toFixed(1) + '%';
+  vuRAF = requestAnimationFrame(runVU);
+}
+
+audioToggle.addEventListener('click', () => {
+  if (audioRunning) stopAudio(); else startAudio();
+});
+
+boostSlider.addEventListener('input', () => {
+  const g = parseInt(boostSlider.value) / 100;
+  boostVal.textContent = g.toFixed(1) + '×';
+  if (gainNode) gainNode.gain.value = g;
+});
+
+audioDev.addEventListener('change', () => {
+  if (audioRunning) { stopAudio(); startAudio(); }  // restart on new device
+});
+
+// Try to populate device names on load (labels appear after first grant)
+if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+  listAudioInputs();
+  navigator.mediaDevices.addEventListener &&
+    navigator.mediaDevices.addEventListener('devicechange', listAudioInputs);
+}
+
+</script>
+</body>
+</html>
