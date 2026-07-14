@@ -3,11 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QMX Fusion · Health Dashboard V27</title>
-<meta name="description" content="Browser-based live monitoring and CAT control panel for the QRP Labs QMX transceiver. Connects via Web Serial API — no software to install. Chrome / Edge only.">
-<meta property="og:title" content="QMX Fusion · Health Dashboard V27">
-<meta property="og:description" content="Live SWR, RF power, S-meter, VFO, mode, keyer speed and audio monitor for the QRP Labs QMX. Runs entirely in the browser via Web Serial API.">
-<meta property="og:type" content="website">
+<title>QMX Health Dashboard  V27</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -631,7 +627,7 @@ input[type=range].boost-slider::-moz-range-thumb {
 
 <header>
   <span class="logo">QMX</span>
-  <span class="header-title">Fusion · Health Dashboard V27</span>
+  <span class="header-title">Health Dashboard V27</span>
   <div class="header-right">
     <select class="interval-sel" id="interval-sel" title="Update interval">
       <option value="500">500 ms</option>
@@ -650,15 +646,11 @@ input[type=range].boost-slider::-moz-range-thumb {
     </div>
     <button class="theme-btn" id="theme-btn" title="Toggle theme">☀</button>
     <span class="callsign">G4ADF · DJ0CU</span>
-    <a href="https://github.com/Sparks72/QMX-Dashboard" target="_blank" rel="noopener"
-       style="font-size:11px;color:var(--muted);text-decoration:none;font-family:'Share Tech Mono',monospace;letter-spacing:.05em;transition:color .2s"
-       onmouseover="this.style.color='var(--glow)'" onmouseout="this.style.color='var(--muted)'">GitHub ↗</a>
   </div>
 </header>
 
 <div class="no-serial" id="no-serial">
-  ⚠ Web Serial API not available in this browser. Open this page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> (desktop) to connect a real QMX radio.
-  &nbsp;·&nbsp; <a href="https://github.com/Sparks72/QMX-Dashboard" target="_blank" rel="noopener" style="color:inherit">View source on GitHub ↗</a>
+  ⚠ Web Serial API not available — use Chrome or Edge (desktop).
 </div>
 
 <!-- Overlay when disconnected -->
@@ -678,7 +670,7 @@ input[type=range].boost-slider::-moz-range-thumb {
     <div class="vfo-freq" id="vfo-freq">— — —</div>
     <div class="vfo-meta">
       <span class="vfo-chip clk" id="chip-vfosel" data-vfo="A" title="Click: select VFO A / B">VFO A</span>
-      <span class="vfo-chip clk" id="chip-mode" title="Click: cycle CW → FSK → CW-R → FSK-R">—</span>
+     <span class="vfo-chip clk" id="chip-mode" title="Click: cycle CW → FSK → CW-R → FSK-R → LSB → USB">—</span>
       <span class="vfo-chip" id="chip-vfob">VFO B: —</span>
       <span class="vfo-chip clk" id="chip-rit" title="Click: toggle RIT on / off">RIT: OFF</span>
       <span class="vfo-chip clk" id="chip-split" title="Click: toggle Split / Simplex">Simplex</span>
@@ -1683,7 +1675,7 @@ function _flushSetCAT(){
 // ── Clickable operating-frequency chips ─────────────────────────────────────
 // Each click sends one CAT set command and updates the chip optimistically;
 // the next poll confirms (or reverts) from the rig's actual state.
-const MODE_CYCLE=[3,6,7,9]; // CW, FSK, CW-R, FSK-R (QMX MD set values)
+const MODE_CYCLE=[3,6,7,9,1,2]; // CW, FSK, CW-R, FSK-R, LSB, USB (QMX MD set values)
 
 function wireFreqBox(){
   const mode=document.getElementById('chip-mode');
